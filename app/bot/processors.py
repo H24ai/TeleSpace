@@ -44,12 +44,20 @@ class EntityProcessor:
 
         # 6. Execute additions.
         if folders_to_add:
-            item_data = await saving_function(message)
+            item_data = await saving_function(message, context)
             if item_data:
+                storage_message_id = item_data.pop('storage_message_id', None)
+                storage_channel_id = item_data.pop('storage_channel_id', None)
                 for folder_id in folders_to_add:
                     if folder_id not in previously_archived_ids:
                         item_id = db.items.add_item(container_id=folder_id, user_id=user_id, **item_data)
                         if item_id:
+                            if storage_message_id and storage_channel_id:
+                                db.items.add_file_location(
+                                    item_id=item_id,
+                                    channel_id=storage_channel_id,
+                                    message_id=storage_message_id
+                                )
                             db.automation.add_archived_content(entity_id, message_id, folder_id, item_id)
                             print(f"Archived message {message_id} to folder {folder_id} with item_id {item_id}")
 

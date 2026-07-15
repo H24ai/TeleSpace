@@ -70,7 +70,7 @@ async def receive_container_name(update: Update, context: ContextTypes.DEFAULT_T
         if parent_details: owner_id = parent_details['owner_user_id']
 
     db_containers.add_container(owner_user_id=owner_id, name=name, type=container_type, parent_id=parent_id)
-    await update.message.reply_text(f"✅ تم إنشاء \"{name}\" بنجاح\.", parse_mode='MarkdownV2')
+    await update.message.reply_text(f"✅ تم إنشاء '{name}' بنجاح.")
     
     context.user_data.clear()
     if parent_id:

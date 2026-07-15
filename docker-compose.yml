@@ -48,6 +48,7 @@ services:
       - API_SERVER_URL=http://telegram-bot-api:8081
     volumes:
       - telegram-data:/var/lib/telegram-bot-api
+      - ./app:/apps/app
       - ./static:/apps/static
     command: ["python", "-m", "app.bot.main"]
 
