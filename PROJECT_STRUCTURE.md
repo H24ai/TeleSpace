@@ -2,6 +2,7 @@
 
 Below is an illustration of the directory tree for the **TeleSpace** project, along with a brief description of the function of each file and folder:
 
+```
 TeleSpace/
 ├── api/                            # Application Programming Interface (FastAPI) for external system interaction
 │   ├── routers/                    # Definition of API endpoints
@@ -50,3 +51,4 @@ TeleSpace/
 ├── docker-compose.yml              # Services definition and container configuration (Docker Compose)
 ├── requirements.txt                # List of project libraries and dependencies (Python Dependencies)
 └── README.md                       # General project documentation file
+```

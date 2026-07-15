@@ -74,7 +74,7 @@ Follow these instructions to get a local copy up and running in a Dockerized env
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/H24ai/TeleSpace.git
+   git clone https://github.com/H55an/TeleSpace.git
    cd TeleSpace
    ```
 
