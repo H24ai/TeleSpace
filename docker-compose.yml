@@ -10,9 +10,9 @@ services:
     container_name: telespace_db
     environment:
       - PYTHONPATH=/apps
-      - POSTGRES_USER=telespace_user      # اسم المستخدم الجديد
+      - POSTGRES_USER=${DB_USER}      # اسم المستخدم الجديد
       - POSTGRES_PASSWORD=${DB_PASS}  # كلمة المرور الجديدة
-      - POSTGRES_DB=telespace_db          # اسم قاعدة البيانات
+      - POSTGRES_DB=${DB_NAME}          # اسم قاعدة البيانات
     volumes:
       - pg_data:/var/lib/postgresql/data  # لحفظ البيانات بشكل دائم
     ports:
