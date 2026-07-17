@@ -17,6 +17,10 @@ def main() -> None:
     """
     [معدل] نقطة انطلاق البوت مع المعالجات الموحدة.
     """
+    # 0. Automatic database initialization
+    from app.shared.database.setup import setup_database
+    setup_database()
+
     # 1. إنشاء التطبيق
     application = (
         Application.builder()
