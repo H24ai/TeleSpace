@@ -105,29 +105,64 @@ async def view_and_send_container_contents(update: Update, context: ContextTypes
             content = item['content']
             file_id = item['file_id']
             
-            if item_type == 'text': await context.bot.send_message(chat_id=chat_id, text=content, reply_markup=reply_markup)
-            else: # Files
-                if content != None:
-                    content = content if len(content) <= 1024 else content[:1020] + " ..."                  
-                # Phase 2: Distributed Retrieval Logic
+            # التحقق هل العنصر مخزن بعد أو يساوي تاريخ القطع؟
+            use_new_copy_logic = False
+            item_upload_date = item.get('upload_date')
+            if config.CUTOFF_DATE and item_upload_date:
+                naive_upload_date = item_upload_date.replace(tzinfo=None) if item_upload_date.tzinfo else item_upload_date
+                naive_cutoff_date = config.CUTOFF_DATE.replace(tzinfo=None) if config.CUTOFF_DATE.tzinfo else config.CUTOFF_DATE
+                if naive_upload_date >= naive_cutoff_date:
+                    use_new_copy_logic = True
+
+            sent_via_copy = False
+
+            if use_new_copy_logic:
+                # آلية الميزة الجديدة: محاولة النسخ المباشر الموزع لجميع الأنواع (نص أو وسائط) دون تعليق توضيحي مخصص (caption)
                 location = db_items.get_file_location(item['item_record_id'])
                 if location:
-                    # Attempt to copy message from storage channel
                     try:
                         await context.bot.copy_message(
                             chat_id=chat_id,
                             from_chat_id=location['channel_id'],
                             message_id=location['message_id'],
-                            caption=content if content else None,
                             reply_markup=reply_markup
                         )
-                        # Ensure small delay even after copy
-                        await asyncio.sleep(0.5)
-                        continue # Move to next item if successful
+                        sent_via_copy = True
                     except Exception as e:
-                        print(f"Failed to copy message using location for item {item['item_record_id']}: {e}")
-                        # Fallback to legacy method below
+                        print(f"Failed to copy message using new copy logic for item {item['item_record_id']}: {e}")
+            else:
+                # آلية الطرق القديمة/الحالية: النسخ المباشر للوسائط فقط مع تعليق توضيحي مخصص (caption)
+                if item_type != 'text':
+                    location = db_items.get_file_location(item['item_record_id'])
+                    if location:
+                        try:
+                            display_caption = content
+                            if display_caption != None:
+                                display_caption = display_caption if len(display_caption) <= 1024 else display_caption[:1020] + " ..."
+                            
+                            await context.bot.copy_message(
+                                chat_id=chat_id,
+                                from_chat_id=location['channel_id'],
+                                message_id=location['message_id'],
+                                caption=display_caption if display_caption else None,
+                                reply_markup=reply_markup
+                            )
+                            sent_via_copy = True
+                        except Exception as e:
+                            print(f"Failed to copy message using old copy logic for item {item['item_record_id']}: {e}")
 
+            # إذا تم الإرسال بنجاح عبر copy_message، انتقل للعنصر التالي
+            if sent_via_copy:
+                await asyncio.sleep(0.5)
+                continue
+
+            # الحل الاحتياطي (Fallback) في حال عدم الإرسال بنسخ الرسالة أو للمسارات القديمة للنصوص
+            if item_type == 'text':
+                await context.bot.send_message(chat_id=chat_id, text=content, reply_markup=reply_markup)
+            else:
+                display_caption = content
+                if display_caption != None:
+                    display_caption = display_caption if len(display_caption) <= 1024 else display_caption[:1020] + " ..."
                 send_map = {
                     'document': context.bot.send_document,
                     'video': context.bot.send_video,
@@ -135,7 +170,7 @@ async def view_and_send_container_contents(update: Update, context: ContextTypes
                     'audio': context.bot.send_audio,
                     'voice': context.bot.send_voice,
                 }
-                kwargs = {'caption': content, 'reply_markup': reply_markup, item_type: file_id}
+                kwargs = {'caption': display_caption, 'reply_markup': reply_markup, item_type: file_id}
                 await send_map[item_type](chat_id=chat_id, **kwargs)
             
             await asyncio.sleep(0.5)

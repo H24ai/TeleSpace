@@ -77,6 +77,24 @@ else:
 # =========================================================
 # 4. التحقق من الصحة (Validation)
 # =========================================================
+# تاريخ القطع للنسخ الموزع المباشر
+from datetime import datetime
+cutoff_date_str = os.getenv("CUTOFF_DATE")
+CUTOFF_DATE = None
+if cutoff_date_str:
+    try:
+        cutoff_date_str = cutoff_date_str.strip().strip('"').strip("'")
+        if 'T' in cutoff_date_str:
+            CUTOFF_DATE = datetime.fromisoformat(cutoff_date_str)
+        else:
+            try:
+                CUTOFF_DATE = datetime.strptime(cutoff_date_str, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                CUTOFF_DATE = datetime.strptime(cutoff_date_str, "%Y-%m-%d")
+        print(f"📅 Config: CUTOFF_DATE loaded successfully: {CUTOFF_DATE}")
+    except Exception as e:
+        print(f"⚠️ Config: Error parsing CUTOFF_DATE '{cutoff_date_str}': {e}")
+
 # هذا الكود يعمل تلقائياً عند استيراد الملف
 if not TELEGRAM_BOT_TOKEN or not DATABASE_URL:
     # نستخدم sys.exit لإيقاف البرنامج فوراً إذا كانت الإعدادات ناقصة

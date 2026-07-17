@@ -16,7 +16,7 @@ import uuid # For unique filenames if needed, though file_unique_id is better
 async def process_message_for_saving(message: Message, context: ContextTypes.DEFAULT_TYPE) -> dict | None:
     """
     [معدل] يعالج الرسائل:
-    1. يرسلها لقناة التخزين.
+    1. يرسلها لقناة التخزين (سواء كانت نصاً أو وسائط).
     2. يستخرج الميتاداتا من رسالة القناة.
     3. يحمل الصورة المصغرة محلياً.
     """
@@ -26,13 +26,33 @@ async def process_message_for_saving(message: Message, context: ContextTypes.DEF
     elif message.photo: (file_type, file_obj) = ('photo', message.photo[-1])
     elif message.audio: (file_type, file_obj) = ('audio', message.audio)
     elif message.voice: (file_type, file_obj) = ('voice', message.voice)
+    elif message.text: (file_type, file_obj) = ('text', None)
 
-    if file_type and file_obj:
+    if file_type:
         try:
             fwd_msg = await message.forward(chat_id=config.STORAGE_CHANNEL_ID)
         except Forbidden:
             print(f"Error: Bot is not an admin in the storage channel {config.STORAGE_CHANNEL_ID} or cannot forward messages.")
             return None
+        
+        # إذا كان العنصر نصياً، يتم إرجاع بياناته فوراً بعد نجاح إعادة التوجيه
+        if file_type == 'text':
+            if fwd_msg:
+                return {
+                    'item_name': f"رسالة: {message.text[:20]}...",
+                    'item_type': 'text',
+                    'content': message.text,
+                    'file_unique_id': None,
+                    'file_id': None,
+                    'storage_message_id': fwd_msg.message_id,
+                    'storage_channel_id': fwd_msg.chat.id,
+                    # بيانات وصفية فارغة للنص
+                    'file_name': None, 'mime_type': 'text/plain', 'file_size': 0, 
+                    'width': None, 'height': None, 'duration': None, 'thumbnail_path': None
+                }
+            else:
+                print("Could not forward text message to storage channel")
+                return None
         
         fwd_file_obj = None
         if fwd_msg:
@@ -56,7 +76,6 @@ async def process_message_for_saving(message: Message, context: ContextTypes.DEF
             }
 
             # --- Thumbnail Processing ---
-            # --- Thumbnail Processing ---
             # Try to find a thumbnail
             thumb = None
             if file_type == 'photo' and fwd_msg.photo:
@@ -64,14 +83,6 @@ async def process_message_for_saving(message: Message, context: ContextTypes.DEF
                  thumb = fwd_msg.photo[0]
             else:
                  thumb = getattr(fwd_file_obj, 'thumbnail', None) or getattr(fwd_file_obj, 'thumb', None)
-            
-            # For photos, the photo itself is the content, so we might generate a thumb? 
-            # Telegram usually provides 'thumb' for documents/videos. 
-            # For 'photo' type, fwd_file_obj IS the photo size. We can pick a smaller size as thumb if we want, 
-            # but usually for 'photo' items we might want to just display the photo itself.
-            # However, for consistency, let's see if we can get a thumb.
-            # If it's a photo, we can download the 's' size as thumb if available in the list?
-            # But here fwd_file_obj is a PhotoSize object.
             
             if thumb:
                 try:
@@ -104,20 +115,6 @@ async def process_message_for_saving(message: Message, context: ContextTypes.DEF
         else:
             print(f"Could not forward message or extract file of type {file_type}")
             return None
-
-    elif message.text:
-        return {
-            'item_name': f"رسالة: {message.text[:20]}...",
-            'item_type': 'text',
-            'content': message.text,
-            'file_unique_id': None,
-            'file_id': None,
-            'storage_message_id': None,
-            'storage_channel_id': None,
-            # Empty metadata for text
-            'file_name': None, 'mime_type': 'text/plain', 'file_size': 0, 
-            'width': None, 'height': None, 'duration': None, 'thumbnail_path': None
-        }
         
     return None
 

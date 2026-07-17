@@ -90,7 +90,7 @@ def get_items_paginated(container_id: int, limit: int, offset: int):
             total_items = cursor.fetchone()[0]
             
             cursor.execute(
-                "SELECT item_record_id, item_name, item_type, content, file_id FROM items WHERE container_id = %s ORDER BY upload_date ASC, item_record_id ASC LIMIT %s OFFSET %s",
+                "SELECT item_record_id, item_name, item_type, content, file_id, upload_date FROM items WHERE container_id = %s ORDER BY upload_date ASC, item_record_id ASC LIMIT %s OFFSET %s",
                 (container_id, limit, offset)
             )
             items_page = cursor.fetchall()
