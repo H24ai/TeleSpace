@@ -139,7 +139,14 @@ class GroupProcessor(EntityProcessor):
         topic_name = db.automation.get_topic_name_by_thread_id(message.chat.id, thread_id)
 
         if not topic_name:
-            return set()
+            if thread_id > 0:
+                from app.bot.topic_fetcher import fetch_real_topic_name_via_hydrogram
+                topic_name = await fetch_real_topic_name_via_hydrogram(message.chat.id, thread_id)
+                if topic_name:
+                    db.automation.add_or_update_topic(message.chat.id, thread_id, topic_name)
+            
+            if not topic_name:
+                return set()
 
         # ابحث عن "قسم فرعي" يطابق اسم الموضوع
         all_sub_containers = db.containers.get_all_containers_recursively(linked_entity['container_id'])
