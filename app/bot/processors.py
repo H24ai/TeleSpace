@@ -1,10 +1,81 @@
 import re
-from telegram import Message
+from telegram import Message, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
 from telegram.ext import ContextTypes
-from telegram.error import Forbidden
+from telegram.error import Forbidden, BadRequest
 from telegram.helpers import escape_markdown
 import app.bot.keyboards as kb
 import app.shared.database as db
+
+
+def extract_clean_hashtags(message: Message) -> set[str]:
+    """
+    تستخرج الهاشتاجات من أي رسالة (عادية أو غنية) بكفاءة عالية وبدون أخطاء الإيموجي (UTF-16).
+    تُرجع العناصر في set مع تحويلها إلى Lowercase وإزالة الـ # واستبدال الـ _ بمسافة (' ')
+    """
+    if not message:
+        return set()
+
+    found_tags = set()
+    message_dict = message.to_dict() if hasattr(message, 'to_dict') else {}
+
+    # 1. المسار الأول: الرسائل الغنية (Rich Messages)
+    if 'rich_message' in message_dict:
+        rich_data = message_dict['rich_message']
+        
+        for block in rich_data.get('blocks', []):
+            block_text = block.get('text')
+            
+            if isinstance(block_text, dict) and block_text.get('type') == 'hashtag':
+                tag = block_text.get('hashtag') or block_text.get('text', '')
+                if tag:
+                    clean = tag.lstrip('#').replace('_', ' ').strip().lower()
+                    if clean:
+                        found_tags.add(clean)
+
+            elif isinstance(block_text, list):
+                for item in block_text:
+                    if isinstance(item, dict) and item.get('type') == 'hashtag':
+                        tag = item.get('hashtag') or item.get('text', '')
+                        if tag:
+                            clean = tag.lstrip('#').replace('_', ' ').strip().lower()
+                            if clean:
+                                found_tags.add(clean)
+        
+        # إذا وجدنا الهاشتاجات في الرسائل الغنية، نكتفي بها ونرجعها
+        if found_tags:
+            return found_tags
+
+    # 2. المسار الثاني: الكيانات الرسمية عبر دوال المكتبة (تتجاوز مشكلة الإيموجي بأمان)
+    entities_dict = {}
+    if message.text:
+        # نجلب الكيانات من النص
+        entities_dict = message.parse_entities(types=[MessageEntity.HASHTAG])
+    elif message.caption:
+        # نجلب الكيانات من الشرح المرفق للوسائط (الصور/الفيديو)
+        entities_dict = message.parse_caption_entities(types=[MessageEntity.HASHTAG])
+
+    if entities_dict:
+        found_tags = {
+            tag_text.lstrip('#').replace('_', ' ').strip().lower()
+            for entity, tag_text in entities_dict.items()
+        }
+        found_tags.discard('')
+        
+        if found_tags:
+            return found_tags
+
+    # 3. المسار الثالث: البحث الاحتياطي بالـ Regex (يدعم العربي)
+    text_content = message.text or message.caption
+    if text_content:
+        regex_tags = re.findall(r"#([^\s#]+)", text_content)
+        found_tags = {
+            tag.replace('_', ' ').strip().lower()
+            for tag in regex_tags
+        }
+        found_tags.discard('')
+
+    return found_tags
+
 
 class EntityProcessor:
     """Base class for processing updates from different entity types."""
@@ -80,14 +151,16 @@ class EntityProcessor:
 
 class ChannelProcessor(EntityProcessor):
     """Processes messages and UI for linked channels."""
-    async def get_target_folders(self, message, linked_entity, all_folders_in_section) -> set:
-        text = message.text or message.caption or ""
-        hashtags = set(re.findall(r"#(\w+)", text))
-        normalized_hashtags = {tag.replace('_', ' ').lower() for tag in hashtags}
+    async def get_target_folders(self, message: Message, linked_entity: dict, all_folders_in_section: list) -> set:
+        hashtags = extract_clean_hashtags(message)
+        if not hashtags:
+            return set()
         
-        folder_name_map = {folder['name'].lower(): folder['id'] for folder in all_folders_in_section}
+        folder_name_map = {}
+        for folder in all_folders_in_section:
+            folder_name_map[folder['name'].lower()] = folder['id']
         
-        matched_folder_ids = {folder_name_map[ht] for ht in normalized_hashtags if ht in folder_name_map}
+        matched_folder_ids = {folder_name_map[ht] for ht in hashtags if ht in folder_name_map}
         return matched_folder_ids
 
     async def update_ui(self, context: ContextTypes.DEFAULT_TYPE, message, linked_entity, final_folder_ids, all_folders_in_section):
@@ -109,6 +182,9 @@ class ChannelProcessor(EntityProcessor):
             )
         except Forbidden as e:
             print(f"Failed to edit reply markup for message {message.message_id} in channel {message.chat.id}. Reason: {e}")
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                print(f"BadRequest editing reply markup: {e}")
         except Exception as e:
             print(f"An unexpected error occurred while editing reply markup: {e}")
 
@@ -118,17 +194,17 @@ class GroupProcessor(EntityProcessor):
         """
         [مبسط وموحد] يحدد المجلدات المستهدفة باستخدام جدول forum_topics الموحد.
         """
-        text = message.text or message.caption or ""
-        hashtags = set(re.findall(r"#(\w+)", text))
+        hashtags = extract_clean_hashtags(message)
         if not hashtags:
             return set()
 
-        normalized_hashtags = {tag.replace('_', ' ').lower() for tag in hashtags}
-
         # إذا لم تكن المجموعة ذات مواضيع، ابحث في القسم الرئيسي مباشرة
         if not linked_entity.get('is_group_with_topics'):
-            folder_name_map = {folder['name'].lower(): folder['id'] for folder in all_folders_in_section}
-            return {folder_name_map[ht] for ht in normalized_hashtags if ht in folder_name_map}
+            folder_name_map = {}
+            for folder in all_folders_in_section:
+                folder_name_map[folder['name'].lower()] = folder['id']
+                folder_name_map[folder['name'].lower().replace('_', '').replace(' ', '')] = folder['id']
+            return {folder_name_map[ht] for ht in hashtags if ht in folder_name_map}
 
         # --- منطق موحد للمجموعات ذات المواضيع ---
         
@@ -163,8 +239,11 @@ class GroupProcessor(EntityProcessor):
         if not folders_in_topic_section:
             return set()
             
-        folder_name_map = {folder['name'].lower(): folder['id'] for folder in folders_in_topic_section}
-        return {folder_name_map[ht] for ht in normalized_hashtags if ht in folder_name_map}
+        folder_name_map = {}
+        for folder in folders_in_topic_section:
+            folder_name_map[folder['name'].lower()] = folder['id']
+            folder_name_map[folder['name'].lower().replace('_', '').replace(' ', '')] = folder['id']
+        return {folder_name_map[ht] for ht in hashtags if ht in folder_name_map}
 
     async def update_ui(self, context: ContextTypes.DEFAULT_TYPE, message: Message, linked_entity: dict, final_folder_ids: set, all_folders_in_section: list):
         # 1. تحقق أولاً مما إذا كانت هناك مجلدات تمت مطابقتها. إذا لم يكن هناك، لا تفعل شيئًا.
@@ -186,73 +265,36 @@ class GroupProcessor(EntityProcessor):
             bot_username = (await context.bot.get_me()).username
             keyboard = kb.build_channel_post_keyboard(final_folders_for_keyboard, linked_entity['container_id'], bot_username)
 
-            # 3. [مهم] حذف رسالة المستخدم الأصلية
+            # التحقق مما إذا كانت الرسالة مُرسلة من قبل "المجموعة" (أدمن مخفي)
+            if message.sender_chat and message.sender_chat.id == message.chat.id:
+                # محاولة جلب الوسم (إذا كان الأدمن يمتلك وسماً مخصصاً)
+                admin_title = message.author_signature
+                sender_name = admin_title
+                
+            sender_button = InlineKeyboardButton(
+                text=f"Sent by | {sender_name}",
+                url=f"tg://user?id={sender_id}"
+            )
+
+            if keyboard:
+                keyboard_list = list(keyboard.inline_keyboard)
+                keyboard_list.append([sender_button])
+                keyboard = InlineKeyboardMarkup(keyboard_list)
+            else:
+                keyboard = InlineKeyboardMarkup([[sender_button]])
+
+            # 3. [مهم] نسخ وإعادة إرسال الرسالة مع الأزرار التفاعلية
+            await context.bot.copy_message(
+                chat_id=message.chat.id,
+                from_chat_id=message.chat.id,
+                message_id=message.message_id,
+                reply_markup=keyboard,
+                message_thread_id=thread_id
+            )
+
+            # 4. [مهم] حذف رسالة المستخدم الأصلية
             # يجب أن يمتلك البوت صلاحية "حذف الرسائل" في المجموعة
             await context.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-
-            # 4. [مهم] إعادة إرسال المحتوى مع الأزرار
-            # هذا الجزء يحتاج إلى معالجة أنواع الرسائل المختلفة (نص، صورة، ملف، الخ)
-            
-            # للحصول على النص أو التعليق
-            sender_link = f"[{escape_markdown(sender_name, version=2)}](tg://user?id={sender_id})"
-            text_or_caption = f"{escape_markdown((message.text or message.caption), version=2)}"
-            caption = text_or_caption + f"\nSent by \| {sender_link}" if len(text_or_caption) <= 990 else text_or_caption[:990] + " \.\.\." + f"\nSent by \| {sender_link}"
-
-            # التحقق من نوع الرسالة وإعادة إرسالها
-            if message.photo:
-                await context.bot.send_photo(
-                    chat_id=message.chat.id,
-                    photo=message.photo[-1].file_id,
-                    caption=caption,
-                    reply_markup=keyboard,
-                    message_thread_id=thread_id,
-                    parse_mode='MarkdownV2'
-                )
-            elif message.document:
-                await context.bot.send_document(
-                    chat_id=message.chat.id,
-                    document=message.document.file_id,
-                    caption=caption,
-                    reply_markup=keyboard,
-                    message_thread_id=thread_id,
-                    parse_mode='MarkdownV2'
-                )
-            elif message.video:
-                await context.bot.send_video(
-                    chat_id=message.chat.id,
-                    video=message.video.file_id,
-                    caption=caption,
-                    reply_markup=keyboard,
-                    message_thread_id=thread_id,
-                    parse_mode='MarkdownV2'
-                )
-            elif message.audio:
-                await context.bot.send_audio(
-                    chat_id=message.chat.id,
-                    audio=message.audio.file_id,
-                    caption=caption,
-                    reply_markup=keyboard,
-                    message_thread_id=thread_id,
-                    parse_mode='MarkdownV2'
-                )
-            elif message.voice:
-                await context.bot.send_voice(
-                    chat_id=message.chat.id,
-                    voice=message.voice.file_id,
-                    caption=caption,
-                    reply_markup=keyboard,
-                    message_thread_id=thread_id,
-                    parse_mode='MarkdownV2'
-                )
-            elif message.text:
-                text = f"{escape_markdown(message.text, version=2)}\nSent by \| {sender_link}"
-                await context.bot.send_message(
-                    chat_id=message.chat.id,
-                    text=text,
-                    reply_markup=keyboard,
-                    message_thread_id=thread_id,
-                    parse_mode='MarkdownV2'
-                )
 
         except Forbidden as e:
             # هذا الخطأ يحدث إذا لم يكن لدى البوت الصلاحيات الكافية
