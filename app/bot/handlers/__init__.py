@@ -5,3 +5,4 @@ from .admin import new_container_prompt, receive_container_name, rename_containe
 from .automation import link_channel_start, receive_channel_forward, link_group_start, link_group_command, entity_post_handler, forum_topic_activity_handler, show_automation_menu
 from .router import button_press_router
 from .user_updates import check_user_updates
+from .inline_search import inline_query_handler

@@ -5,6 +5,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     ConversationHandler,
     MessageHandler,
+    InlineQueryHandler,
     filters
 )
 
@@ -108,6 +109,7 @@ def main() -> None:
     application.add_handler(CommandHandler("link_group", handlers.link_group_command)) # [إضافة جديدة]
     application.add_handler(CallbackQueryHandler(handlers.check_subscription_callback, pattern="^check_subscription$"))
     application.add_handler(CallbackQueryHandler(handlers.button_press_router))
+    application.add_handler(InlineQueryHandler(handlers.inline_query_handler))
     
     # 3. تشغيل البوت
     print("Bot is running... Press Ctrl+C to stop.")

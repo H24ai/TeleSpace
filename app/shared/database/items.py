@@ -207,3 +207,60 @@ def rename_item(item_record_id: int, new_name: str, user_id: int) -> dict | None
     finally:
         if conn:
             conn.close()
+
+def search_user_files(user_id: int, query: str = "", limit: int = 50, is_media_mode: bool = False):
+    """
+    Searches for files accessible by the user. 
+    If is_media_mode is True, filters for photos/videos. 
+    Otherwise, filters for documents, audio, and other files (excluding photos/videos).
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn: return []
+
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+            # صياغة شرط الفلترة بناءً على وضع العرض
+            if is_media_mode:
+                type_condition = "i.item_type IN ('photo', 'image', 'video')"
+            else:
+                type_condition = "i.item_type NOT IN ('photo', 'image', 'video')"
+
+            if query.strip():
+                # Full-Text Search مع تصفية النوع
+                search_query = query.strip()
+                cursor.execute(f"""
+                    SELECT DISTINCT i.item_record_id, i.item_name, i.content, i.file_id, i.item_type, i.file_name, i.upload_date
+                    FROM items i
+                    JOIN containers c ON i.container_id = c.id
+                    LEFT JOIN permissions p ON c.id = p.content_id AND p.content_type IN ('section', 'folder')
+                    WHERE (c.owner_user_id = %s OR p.user_id = %s)
+                    AND i.file_id IS NOT NULL
+                    AND i.item_type != 'text'
+                    AND ({type_condition})
+                    AND to_tsvector('simple', COALESCE(i.item_name, '') || ' ' || COALESCE(i.content, '') || ' ' || COALESCE(i.file_name, '')) @@ websearch_to_tsquery('simple', %s)
+                    ORDER BY i.upload_date DESC
+                    LIMIT %s
+                """, (user_id, user_id, search_query, limit))
+            else:
+                # الاستعلام عند فراغ خانة البحث (جلب أحدث الملفات المفلترة)
+                cursor.execute(f"""
+                    SELECT DISTINCT i.item_record_id, i.item_name, i.content, i.file_id, i.item_type, i.file_name, i.upload_date
+                    FROM items i
+                    JOIN containers c ON i.container_id = c.id
+                    LEFT JOIN permissions p ON c.id = p.content_id AND p.content_type IN ('section', 'folder')
+                    WHERE (c.owner_user_id = %s OR p.user_id = %s)
+                    AND i.file_id IS NOT NULL
+                    AND i.item_type != 'text' 
+                    AND ({type_condition})
+                    ORDER BY i.upload_date DESC
+                    LIMIT %s
+                """, (user_id, user_id, limit))
+            
+            return cursor.fetchall()
+    except psycopg2.Error as e:
+        print(f"DB Error in search_user_files: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
