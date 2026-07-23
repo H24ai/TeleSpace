@@ -226,16 +226,28 @@ def search_user_files(user_id: int, query: str = "", limit: int = 50, is_media_m
             else:
                 type_condition = "i.item_type NOT IN ('photo', 'image', 'video')"
 
+            cte_query = """
+                WITH RECURSIVE user_containers AS (
+                    SELECT id FROM containers WHERE owner_user_id = %s
+                    UNION
+                    SELECT c.id FROM containers c
+                    JOIN permissions p ON c.id = p.content_id AND p.content_type IN ('section', 'folder')
+                    WHERE p.user_id = %s
+                    UNION
+                    SELECT c.id FROM containers c
+                    JOIN user_containers uc ON c.parent_id = uc.id
+                )
+            """
+
             if query.strip():
                 # Full-Text Search مع تصفية النوع
                 search_query = query.strip()
                 cursor.execute(f"""
+                    {cte_query}
                     SELECT DISTINCT i.item_record_id, i.item_name, i.content, i.file_id, i.item_type, i.file_name, i.upload_date
                     FROM items i
-                    JOIN containers c ON i.container_id = c.id
-                    LEFT JOIN permissions p ON c.id = p.content_id AND p.content_type IN ('section', 'folder')
-                    WHERE (c.owner_user_id = %s OR p.user_id = %s)
-                    AND i.file_id IS NOT NULL
+                    JOIN user_containers uc ON i.container_id = uc.id
+                    WHERE i.file_id IS NOT NULL
                     AND i.item_type != 'text'
                     AND ({type_condition})
                     AND to_tsvector('simple', COALESCE(i.item_name, '') || ' ' || COALESCE(i.content, '') || ' ' || COALESCE(i.file_name, '')) @@ websearch_to_tsquery('simple', %s)
@@ -245,12 +257,11 @@ def search_user_files(user_id: int, query: str = "", limit: int = 50, is_media_m
             else:
                 # الاستعلام عند فراغ خانة البحث (جلب أحدث الملفات المفلترة)
                 cursor.execute(f"""
+                    {cte_query}
                     SELECT DISTINCT i.item_record_id, i.item_name, i.content, i.file_id, i.item_type, i.file_name, i.upload_date
                     FROM items i
-                    JOIN containers c ON i.container_id = c.id
-                    LEFT JOIN permissions p ON c.id = p.content_id AND p.content_type IN ('section', 'folder')
-                    WHERE (c.owner_user_id = %s OR p.user_id = %s)
-                    AND i.file_id IS NOT NULL
+                    JOIN user_containers uc ON i.container_id = uc.id
+                    WHERE i.file_id IS NOT NULL
                     AND i.item_type != 'text' 
                     AND ({type_condition})
                     ORDER BY i.upload_date DESC

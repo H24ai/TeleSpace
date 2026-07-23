@@ -20,9 +20,9 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.inline_query.from_user.id
     
     # 1. تفعيل فلاتر الرموز بناءً على ما اتفقنا عليه لتجنب تشوه العرض
-    is_media_mode = query.startswith("-m ")
+    is_media_mode = query.startswith("-m")
     if is_media_mode:
-        search_query = query[3:].strip()
+        search_query = query[2:].strip()
         # يمكنك تمرير هذا المتغير لدالة قاعدة البيانات لتصفية الوسائط فقط: WHERE item_type IN ('photo', 'video', 'image')
     else:
         search_query = query
