@@ -205,6 +205,10 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [InlineKeyboardButton("👤 مساحتي الخاصة", callback_data="my_space")],
         [InlineKeyboardButton("🤝 المساحات المشتركة", callback_data="shared_spaces")],
+        [
+            # InlineKeyboardButton("🖼️ البحث عن الصور والفيديو", switch_inline_query_current_chat="-m "),
+            InlineKeyboardButton("🔍 البحث عن الملفات", switch_inline_query_current_chat="")
+        ],
         [InlineKeyboardButton("🤖 سؤال للمرشد الذكي", callback_data="ask_ai_guide")] # [جديد]
     ]
     return InlineKeyboardMarkup(keyboard)

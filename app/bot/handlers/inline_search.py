@@ -43,7 +43,24 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         item_name = (item.get('item_name') or "").strip()
         file_name = (item.get('file_name') or "").strip()
         title = item_name or file_name or "ملف"
-        description = item.get('content') or "الوصف"
+        content_text = (item.get('content') or "").strip()
+        description = content_text
+        
+        if search_query and content_text:
+            query_words = search_query.lower().split()
+            lines = content_text.split('\n')
+            matching_lines = []
+            for line in lines:
+                if any(word in line.lower() for word in query_words):
+                    matching_lines.append(line.strip())
+            if matching_lines:
+                description = " ... ".join(matching_lines)
+                
+        if len(description) > 200:
+            description = description[:197] + "..."
+        elif not description:
+            description = "لا يحتوي على وصف"
+            
         item_type = item.get('item_type')
         
         try:
