@@ -14,3 +14,4 @@ fastapi==0.118.0
 uvicorn==0.37.0
 python-multipart==0.0.32
 hydrogram==0.2.0
+git+https://github.com/H55an/ZeroLLM.git

@@ -1,6 +1,6 @@
-import requests
-from . import config
 import os
+from zerollm import ZeroLLM
+from . import config
 
 # مسار ملف قاعدة المعرفة
 KNOWLEDGE_BASE_FILE = os.path.join(os.path.dirname(__file__), 'knowledge_base.md')
@@ -14,7 +14,7 @@ except FileNotFoundError:
 
 def get_guide_response(question: str) -> str:
     """
-    Sends a user's question along with the knowledge base to the AI.
+    Sends a user's question along with the knowledge base to the AI using ZeroLLM.
     """
     if not config.OPENROUTER_API_KEY or config.OPENROUTER_API_KEY == "YOUR_OPENROUTER_API_KEY":
         return "⚠️ لم يتم تكوين مفتاح OpenRouter API. يرجى إضافته إلى ملف `config.py` أو متغيرات البيئة."
@@ -27,35 +27,28 @@ def get_guide_response(question: str) -> str:
 """
 
     try:
-        response = requests.post(
-            url="https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "tngtech/deepseek-r1t2-chimera:free",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"""قاعدة المعرفة:
+        # تحديد اسم النموذج والـ base_url عند تهيئة العميل
+        client = ZeroLLM(
+            api_key=config.OPENROUTER_API_KEY
+        )
+
+        user_content = f"""قاعدة المعرفة:
 ---
 {KNOWLEDGE_BASE_CONTENT}
 ---
 
-سؤال المستخدم: {question}"""}
-                ]
-            }
-        )
-        response.raise_for_status()  # Raise an exception for bad status codes
-        data = response.json()
-        return data['choices'][0]['message']['content']
+سؤال المستخدم: {question}"""
 
-    except requests.exceptions.RequestException as e:
-        print(f"Error calling OpenRouter API: {e}")
-        # Check for specific 400 error to give a better message
-        if e.response and e.response.status_code == 400:
-            return "⚠️ حدث خطأ في الطلب إلى الـ API. قد يكون السبب هو اسم النموذج غير الصحيح أو أن حسابك لا يدعمه. يرجى مراجعة إعدادات OpenRouter."
-        return f"⚠️ حدث خطأ أثناء الاتصال بـ OpenRouter API: {e}"
-    except (KeyError, IndexError) as e:
-        print(f"Error parsing OpenRouter API response: {e}")
-        return "⚠️ حدث خطأ أثناء معالجة الرد من واجهة برمجة التطبيقات."
+        # دالة chat تُمرر لها قائمة الرسائل فقط
+        response = client.chat(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ]
+        )
+
+        return response
+
+    except Exception as e:
+        print(f"Error executing ZeroLLM Client: {e}")
+        return f"⚠️ حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: {e}"

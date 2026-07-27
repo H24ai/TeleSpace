@@ -3,6 +3,8 @@ FROM python:3.10-slim
 
 WORKDIR /apps
 
+RUN apt-get update && apt-get install -y git
+
 # نسخ المتطلبات وتثبيتها
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
