@@ -24,15 +24,15 @@ def check_subscription(func):
         try:
             member = await context.bot.get_chat_member(chat_id=config.REQUIRED_CHANNEL_ID, user_id=user_id)
             if member.status in ['left', 'kicked', 'restricted']:
-                # Import here to avoid circular dependencies if keyboards.py imports utils (unlikely but safe)
-                # Actually keyboards might use utils? No.
-                # But we need to build the keyboard.
-                # Assuming app.bot.keyboards will be available.
-                from app.bot.keyboards import get_subscription_keyboard
+                # حفظ الرابط العميق إذا وجد لكي لا يضيع بعد الاشتراك
+                if update.message and update.message.text and update.message.text.startswith('/start ') and context.args:
+                    context.user_data['deep_link_args'] = context.args
+
+                from app.bot.keyboards import build_subscription_keyboard
                 
                 await update.message.reply_text(
                     "⚠️ عذراً، يجب عليك الاشتراك في قناة البوت لاستخدامه.",
-                    reply_markup=get_subscription_keyboard()
+                    reply_markup=build_subscription_keyboard()
                 )
                 return # Stop execution
         except Exception as e:
