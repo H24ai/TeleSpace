@@ -20,13 +20,23 @@ def can_user_add_admins(user_id: int, content_id: int) -> bool:
             if owner_res and owner_res['owner_user_id'] == user_id:
                 return True
 
-            # ثانيًا، تحقق من جدول الصلاحيات
-            cursor.execute(
-                "SELECT can_add_admins FROM permissions WHERE user_id = %s AND content_id = %s AND permission_level = 'admin'",
-                (user_id, content_id)
-            )
-            perm_res = cursor.fetchone()
-            return perm_res and perm_res['can_add_admins'] == 1
+            # ثانيًا، تحقق من جدول الصلاحيات بشكل هرمي
+            current_id = content_id
+            while current_id is not None:
+                cursor.execute(
+                    "SELECT can_add_admins FROM permissions WHERE user_id = %s AND content_id = %s AND permission_level = 'admin'",
+                    (user_id, current_id)
+                )
+                perm_res = cursor.fetchone()
+                if perm_res and perm_res['can_add_admins'] == 1:
+                    return True
+                
+                # Move to the parent container
+                cursor.execute("SELECT parent_id FROM containers WHERE id = %s", (current_id,))
+                parent_result = cursor.fetchone()
+                current_id = parent_result['parent_id'] if parent_result else None
+
+            return False
     except psycopg2.Error as e:
         print(f"DB Error in can_user_add_admins: {e}")
         return False
